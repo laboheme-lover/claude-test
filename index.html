@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>タイピングチャレンジ</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --dim:#64748b; --ok:#4ade80; --ng:#f87171; --accent:#38bdf8; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; }
+  .card { width:min(680px,92vw); background:var(--card); border-radius:16px; padding:28px; box-shadow:0 10px 40px #0006; }
+  h1 { margin:0 0 16px; font-size:1.5rem; text-align:center; }
+  .stats { display:flex; justify-content:space-around; margin-bottom:20px; }
+  .stat { text-align:center; }
+  .stat b { display:block; font-size:1.8rem; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .stat span { font-size:.75rem; color:var(--dim); }
+  .bar { height:6px; background:#0f172a; border-radius:3px; overflow:hidden; margin-bottom:20px; }
+  .bar div { height:100%; width:100%; background:var(--accent); transition:width .1s linear; }
+  .word { font-size:2.4rem; text-align:center; letter-spacing:.08em; min-height:3.2rem; font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .word .done { color:var(--ok); } .word .rest { color:var(--text); }
+  .word.miss { animation:shake .15s; } @keyframes shake { 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+  .hint { text-align:center; color:var(--dim); font-size:.85rem; margin-top:8px; min-height:1.2em; }
+  .level { display:flex; gap:8px; justify-content:center; margin-bottom:16px; }
+  .level button { padding:6px 14px; border:1px solid var(--dim); background:none; color:var(--text); border-radius:20px; cursor:pointer; }
+  .level button.on { background:var(--accent); color:#0f172a; border-color:var(--accent); font-weight:600; }
+  .start { display:block; margin:20px auto 0; padding:12px 36px; font-size:1.1rem; border:none; border-radius:10px;
+           background:var(--accent); color:#0f172a; font-weight:700; cursor:pointer; }
+  .result { text-align:center; margin-top:8px; }
+  .result h2 { margin:0 0 8px; } .rank { font-size:2.4rem; color:var(--ok); font-weight:800; }
+  .best { color:var(--dim); font-size:.9rem; margin-top:8px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>⌨️ タイピングチャレンジ</h1>
+
+  <div id="menu">
+    <div class="level" id="level"></div>
+    <div class="hint">60秒でどれだけ正確に速く打てるか挑戦！</div>
+    <button class="start" id="startBtn">スタート（Enterキー）</button>
+    <div class="best" id="bestMenu" style="text-align:center"></div>
+  </div>
+
+  <div id="game" class="hidden">
+    <div class="stats">
+      <div class="stat"><b id="time">60</b><span>残り秒数</span></div>
+      <div class="stat"><b id="score">0</b><span>単語数</span></div>
+      <div class="stat"><b id="wpm">0</b><span>文字/分</span></div>
+      <div class="stat"><b id="acc">100%</b><span>正確率</span></div>
+    </div>
+    <div class="bar"><div id="bar"></div></div>
+    <div class="word" id="word"></div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <div id="result" class="hidden result">
+    <h2>結果</h2>
+    <div class="rank" id="rank"></div>
+    <div class="stats" style="margin-top:16px">
+      <div class="stat"><b id="rWpm"></b><span>文字/分</span></div>
+      <div class="stat"><b id="rScore"></b><span>単語数</span></div>
+      <div class="stat"><b id="rAcc"></b><span>正確率</span></div>
+    </div>
+    <div class="best" id="bestResult"></div>
+    <button class="start" id="retryBtn">もう一度（Enterキー）</button>
+  </div>
+</div>
+
+<script>
+const DURATION = 60;
+// 表示は日本語、入力はローマ字（ヘボン式の代表的な綴り）
+const WORDS = {
+  easy: [
+    ["さくら","sakura"],["やま","yama"],["うみ","umi"],["そら","sora"],["ねこ","neko"],["いぬ","inu"],
+    ["つき","tsuki"],["はな","hana"],["みず","mizu"],["ひかり","hikari"],["ともだち","tomodachi"],
+    ["あさ","asa"],["ゆめ","yume"],["かぜ","kaze"],["ほし","hoshi"],["こころ","kokoro"]
+  ],
+  normal: [
+    ["キーボード","keyboard"],["プログラム","program"],["コンピュータ","computer"],["インターネット","internet"],
+    ["ありがとう","arigatou"],["おはよう","ohayou"],["がんばれ","ganbare"],["たのしい","tanoshii"],
+    ["ゲーム","game"],["スマートフォン","smartphone"],["ブラウザ","browser"],["タイピング","typing"],
+    ["ジャバスクリプト","javascript"],["データベース","database"],["アルゴリズム","algorithm"],["ネットワーク","network"]
+  ],
+  hard: [
+    ["the quick brown fox","the quick brown fox"],["hello world","hello world"],
+    ["practice makes perfect","practice makes perfect"],["typing is fun","typing is fun"],
+    ["keep it simple","keep it simple"],["never give up","never give up"],
+    ["time flies like an arrow","time flies like an arrow"],["knowledge is power","knowledge is power"],
+    ["a journey of a thousand miles","a journey of a thousand miles"],["fortune favors the bold","fortune favors the bold"]
+  ]
+};
+const LEVELS = { easy:"かんたん", normal:"ふつう", hard:"むずかしい" };
+const $ = id => document.getElementById(id);
+let level = localStorage.getItem("typing.level") || "normal";
+let state = null, timer = null;
+
+function renderLevels() {
+  $("level").innerHTML = "";
+  for (const k in LEVELS) {
+    const b = document.createElement("button");
+    b.textContent = LEVELS[k]; b.className = k === level ? "on" : "";
+    b.onclick = () => { level = k; localStorage.setItem("typing.level", k); renderLevels(); showBest(); };
+    $("level").appendChild(b);
+  }
+}
+function best() { return +localStorage.getItem("typing.best." + level) || 0; }
+function showBest() { $("bestMenu").textContent = best() ? `ハイスコア（${LEVELS[level]}）: ${best()} 文字/分` : ""; }
+
+function show(id) { for (const s of ["menu","game","result"]) $(s).classList.toggle("hidden", s !== id); }
+
+function nextWord() {
+  const list = WORDS[level];
+  let w;
+  do { w = list[Math.floor(Math.random() * list.length)]; } while (state.cur && w === state.cur && list.length > 1);
+  state.cur = w; state.pos = 0; renderWord();
+}
+function renderWord() {
+  const [disp, rom] = state.cur;
+  $("hint").textContent = disp !== rom ? disp : "";
+  $("word").innerHTML = `<span class="done">${esc(rom.slice(0, state.pos))}</span><span class="rest">${esc(rom.slice(state.pos))}</span>`;
+}
+const esc = s => s.replace(/ /g, "&nbsp;");
+
+function start() {
+  state = { cur:null, pos:0, words:0, chars:0, miss:0, left:DURATION, t0:Date.now() };
+  show("game"); nextWord(); updateStats();
+  clearInterval(timer);
+  timer = setInterval(() => {
+    state.left = Math.max(0, DURATION - (Date.now() - state.t0) / 1000);
+    updateStats();
+    if (state.left <= 0) finish();
+  }, 100);
+}
+function updateStats() {
+  const el = (Date.now() - state.t0) / 1000;
+  $("time").textContent = Math.ceil(state.left);
+  $("bar").style.width = (state.left / DURATION * 100) + "%";
+  $("score").textContent = state.words;
+  $("wpm").textContent = el > 1 ? Math.round(state.chars / el * 60) : 0;
+  const total = state.chars + state.miss;
+  $("acc").textContent = total ? Math.round(state.chars / total * 100) + "%" : "100%";
+}
+function finish() {
+  clearInterval(timer); timer = null;
+  const cpm = Math.round(state.chars / DURATION * 60);
+  const total = state.chars + state.miss;
+  const acc = total ? Math.round(state.chars / total * 100) : 100;
+  const prev = best();
+  if (cpm > prev) localStorage.setItem("typing.best." + level, cpm);
+  $("rank").textContent = cpm >= 400 ? "S 神" : cpm >= 300 ? "A 達人" : cpm >= 200 ? "B 上級者" : cpm >= 100 ? "C 一人前" : "D 修行中";
+  $("rWpm").textContent = cpm; $("rScore").textContent = state.words; $("rAcc").textContent = acc + "%";
+  $("bestResult").textContent = cpm > prev ? "🎉 ハイスコア更新！" : `ハイスコア: ${prev} 文字/分`;
+  state = null; show("result");
+}
+
+document.addEventListener("keydown", e => {
+  if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (!state) {
+    if (e.key === "Enter" && !$("menu").classList.contains("hidden") || e.key === "Enter" && !$("result").classList.contains("hidden")) start();
+    return;
+  }
+  if (e.key === "Escape") { clearInterval(timer); state = null; show("menu"); showBest(); return; }
+  if (e.key.length !== 1) return;
+  e.preventDefault();
+  const rom = state.cur[1];
+  if (e.key === rom[state.pos]) {
+    state.pos++; state.chars++;
+    if (state.pos === rom.length) { state.words++; nextWord(); } else renderWord();
+  } else {
+    state.miss++;
+    $("word").classList.remove("miss"); void $("word").offsetWidth; $("word").classList.add("miss");
+  }
+  updateStats();
+});
+$("startBtn").onclick = start;
+$("retryBtn").onclick = () => { show("menu"); showBest(); start(); };
+renderLevels(); showBest();
+</script>
+</body>
+</html>
